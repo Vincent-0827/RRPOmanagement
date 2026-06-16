@@ -134,7 +134,10 @@
                 <h2 id="page-title" class="text-xl font-bold text-gray-800 tracking-wide">系統載入中...</h2>
             </div>
             <div class="flex items-center gap-4">
-                <div class="text-sm font-medium text-emerald-700 bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 hidden md:flex items-center gap-2">
+                <button onclick="window.initGoogleSheetsDB()" class="text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors px-4 py-2 rounded-lg border border-emerald-200 flex items-center gap-2" title="從 Google Sheets 重新讀取最新資料">
+                    <i class="fa-solid fa-rotate-right"></i> 重新載入
+                </button>
+                <div class="text-sm font-medium text-gray-500 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200 hidden md:flex items-center gap-2">
                     <i class="fa-regular fa-clock"></i> 總計畫期程：115/06/11 ~ 116/06/10
                 </div>
             </div>
@@ -188,7 +191,6 @@
         window.formatToShortDate = function(dateString) {
             if (!dateString) return "";
             try {
-                // 如果字串包含 T 或 Z (ISO 格式) 或是包含 GMT 等字眼，則嘗試轉換
                 if (dateString.includes('T') || dateString.includes('Z') || dateString.includes('GMT') || dateString.includes('+')) {
                     const d = new Date(dateString);
                     if (!isNaN(d.getTime())) {
@@ -198,16 +200,15 @@
                         return `${year}-${month}-${day}`;
                     }
                 }
-            } catch (e) {
-                console.warn("日期轉換失敗，使用原始字串:", dateString);
-            }
-            return dateString; // 若無法轉換，或本來就是短格式，則直接回傳
+            } catch (e) { console.warn("日期轉換失敗，使用原始字串:", dateString); }
+            return dateString;
         };
 
         // ==========================================
         // 1. Google Sheets API 設定 (請在這裡填入您的 Web App URL)
         // ==========================================
-        window.GOOGLE_SHEETS_API_URL = "https://script.google.com/macros/s/AKfycbyc9GZJmQvG9uP4O3tO62m67pT9T8YV1O8R7T3V9T8YV1O8R7T3/exec"; // 請替換為您的網址
+        // ⭐⭐⭐ 部署完 Google Apps Script 後，請將下方引號內的網址替換為您的網址 ⭐⭐⭐
+        window.GOOGLE_SHEETS_API_URL = "https://script.google.com/macros/s/AKfycbygLtyLZg36-ezR69u718PCL4OXO8tOjZs0zx-P61c9p537BpfKxIY8mee8tyaO58EbUg/exec"; 
 
         // ==========================================
         // 2. 資料模型與預設值
@@ -336,22 +337,29 @@
         // ==========================================
         // 3. Google Sheets 讀取與寫入 (API Fetch)
         // ==========================================
-        async function initGoogleSheetsDB() {
+        window.initGoogleSheetsDB = async function() {
             if (!window.GOOGLE_SHEETS_API_URL) {
                 console.warn("未設定 Google Sheets API URL，啟用本機單機模式。系統變更將不會保留在雲端。");
                 if(!window.appInitialized) { window.appInitialized = true; window.initApp(); }
                 return;
             }
             try {
+                // UI 顯示載入中
+                const indicator = document.getElementById('sync-indicator');
+                if (indicator) {
+                    indicator.classList.remove('opacity-0');
+                    indicator.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>讀取資料中...';
+                }
+
                 const response = await fetch(window.GOOGLE_SHEETS_API_URL);
                 const result = await response.json();
                 
                 if (result.status === "success" && result.data) {
                     const dbData = JSON.parse(result.data);
+                    // 讀取成功後，覆蓋本機資料
                     if (dbData.teamMembersData && dbData.teamMembersData.length > 0) window.teamMembersData = dbData.teamMembersData;
                     
                     if (dbData.otherTasksData) {
-                        // 讀取雲端資料時，強制套用日期精簡過濾器
                         window.otherTasksData = dbData.otherTasksData.map(t => ({
                             ...t,
                             submitDate: window.formatToShortDate(t.submitDate),
@@ -362,9 +370,23 @@
                     
                     if (dbData.sixMajorTasksData && dbData.sixMajorTasksData.length > 0) window.sixMajorTasksData = dbData.sixMajorTasksData;
                     console.log("成功從 Google Sheets 載入資料");
+
+                    // 刷新畫面顯示
+                    if (window.appInitialized && window.currentView) {
+                        window.views[window.currentView].render(document.getElementById('content-container'));
+                    }
+                }
+
+                if (indicator) {
+                    indicator.innerHTML = '<i class="fa-solid fa-check mr-1 text-emerald-400"></i>載入成功';
+                    setTimeout(() => indicator.classList.add('opacity-0'), 2000);
                 }
             } catch (e) {
-                console.error("讀取 Google Sheets 失敗，使用預設資料:", e);
+                console.error("讀取 Google Sheets 失敗，使用本機資料:", e);
+                const indicator = document.getElementById('sync-indicator');
+                if (indicator) {
+                    indicator.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1 text-red-500"></i>載入失敗';
+                }
             } finally {
                 if(!window.appInitialized) { window.appInitialized = true; window.initApp(); }
             }
@@ -1107,9 +1129,9 @@
         // 9. 系統啟動
         // ==========================================
         if (document.readyState === 'loading') { 
-            window.addEventListener('DOMContentLoaded', initGoogleSheetsDB); 
+            window.addEventListener('DOMContentLoaded', window.initGoogleSheetsDB); 
         } else { 
-            initGoogleSheetsDB(); 
+            window.initGoogleSheetsDB(); 
         }
     </script>
 </body>
